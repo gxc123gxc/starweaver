@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#07100f" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='31' fill='%23070f10'/%3E%3Cpath d='M32 7l5.2 19.8L57 32l-19.8 5.2L32 57l-5.2-19.8L7 32l19.8-5.2z' fill='%23cfe3c8'/%3E%3C/svg%3E">
+  <meta name="description" content="织星远航 Voyage of Starweaver — 3D 微缩星球探索与基地建设" />
+  <title>织星远航 · Voyage of Starweaver</title>
+  <script type="module" crossorigin src="./assets/index-DcxzV_5g.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-D_dlK6-E.css">
+</head>
+<body>
+  <div id="app">
+    <canvas id="game-canvas"></canvas>
+    <div class="screen-vignette"></div>
+    <div id="damage-flash"></div>
+    <div id="markers"></div>
+    <div id="cinema-bars" class="cinema-bars"><span class="bar bar-top"></span><span class="bar bar-bottom"></span><span class="cinema-label" id="cinema-label"></span></div>
+
+    <!-- BOOT -->
+    <section id="boot" class="boot-screen">
+      <div class="boot-ember">
+        <div class="boot-mark">
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <circle cx="60" cy="60" r="45" fill="none" stroke="currentColor" stroke-width="0.8" opacity="0.45"/>
+            <circle cx="60" cy="60" r="31" fill="none" stroke="currentColor" stroke-width="0.5" opacity="0.28"/>
+            <path d="M60 18 L64 55 L98 60 L64 65 L60 102 L56 65 L22 60 L56 55 Z" fill="none" stroke="currentColor" stroke-width="1"/>
+            <circle cx="60" cy="60" r="3.2" fill="currentColor"/>
+            <circle cx="87" cy="43" r="1.4" fill="currentColor" opacity="0.8"/>
+            <circle cx="35" cy="76" r="1.1" fill="currentColor" opacity="0.6"/>
+          </svg>
+        </div>
+        <div class="boot-title">VOYAGE OF <em>STARWEAVER</em></div>
+        <div class="boot-sub">正在编织星图 / WEAVING THE STAR CHART</div>
+        <div class="boot-progress"><span id="boot-progress-fill"></span></div>
+        <div class="boot-readout" id="boot-readout">CALIBRATING ATMOSPHERES · 00%</div>
+      </div>
+      <div class="boot-coordinates">ORION ARM · SECTOR 47<br/>2187.09.12 / 04:17 UTC</div>
+    </section>
+
+    <!-- PLANETARY ARRIVAL LOADER -->
+    <section id="arrival-loader" class="arrival-loader hidden" aria-hidden="true">
+      <div class="al-backdrop" aria-hidden="true"></div>
+      <div class="al-starfield" aria-hidden="true"></div>
+      <div class="al-frame">
+        <header class="al-head">
+          <div class="al-brand">
+            <span class="al-brand-mark">S<span>W</span></span>
+            <span class="al-brand-copy"><b>STARWEAVER</b><small>PLANETARY ARRIVAL / 01</small></span>
+          </div>
+          <div class="al-head-data">
+            <span>ORION ARM <i>·</i> SECTOR 47</span>
+            <b id="al-code">—</b>
+          </div>
+        </header>
+        <div class="al-stage" id="al-stage"></div>
+        <footer class="al-foot">
+          <div class="al-status-wrap">
+            <span class="al-status-dot"></span>
+            <div><b id="al-status">SYNCING ORBITAL VECTOR</b><small id="al-status-cn">同步轨道矢量</small></div>
+          </div>
+          <div class="al-progress-wrap">
+            <div class="al-progress"><span id="al-progress-fill"></span></div>
+            <div class="al-progress-meta"><span id="al-page-count">01 / 03</span><b id="al-percent">00%</b></div>
+          </div>
+          <div class="al-foot-note">EST. 2187 <i>·</i> <span id="al-foot-code">—</span></div>
+        </footer>
+      </div>
+    </section>
+
+    <!-- WORMHOLE TRANSIT LOADER -->
+    <section id="transit-loader" class="transit-loader hidden" aria-hidden="true">
+      <div class="tl-backdrop" aria-hidden="true"></div>
+      <div class="tl-frame">
+        <header class="tl-head">
+          <div class="tl-brand"><span class="tl-mark">S<span>W</span></span><span><b>STARWEAVER</b><small>FOLD DRIVE / TRANSIT OS</small></span></div>
+          <div class="tl-head-right"><span>ORION ARM <i>·</i> SECTOR 47</span><b id="tl-route">W-00 → BH-01</b></div>
+        </header>
+        <div class="tl-main">
+          <div class="tl-copy">
+            <div class="tl-kicker" id="tl-kicker">JUMP CORRIDOR / W-00</div>
+            <h2 id="tl-title">虫洞航道</h2>
+            <div class="tl-en" id="tl-en">EINSTEIN–ROSEN BRIDGE</div>
+            <p id="tl-sub">引力潮汐已锁定。正在把「织星者号」压入折跃入口。</p>
+            <div class="tl-meta">
+              <div><span>APERTURE / 孔径</span><b>W-00 / UNSTABLE</b></div>
+              <div><span>TRAVERSE / 航程</span><b>1.41 KLY</b></div>
+              <div><span>ROUTE / 航线</span><b>ORION → SAGITTARIUS</b></div>
+            </div>
+          </div>
+          <div class="tl-art" aria-hidden="true">
+            <svg viewBox="0 0 600 600" class="tl-vortex">
+              <defs>
+                <radialGradient id="tl-core" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stop-color="#fff6dd" stop-opacity=".95"/>
+                  <stop offset="18%" stop-color="#ddab69" stop-opacity=".35"/>
+                  <stop offset="55%" stop-color="#315b56" stop-opacity=".16"/>
+                  <stop offset="100%" stop-color="#020707" stop-opacity="0"/>
+                </radialGradient>
+                <linearGradient id="tl-rim" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="#f4d6a4"/>
+                  <stop offset="42%" stop-color="#a9e5cb"/>
+                  <stop offset="100%" stop-color="#55766d" stop-opacity=".25"/>
+                </linearGradient>
+              </defs>
+              <circle cx="300" cy="300" r="244" fill="url(#tl-core)"/>
+              <g class="tl-vortex-spin">
+                <circle cx="300" cy="300" r="222" fill="none" stroke="url(#tl-rim)" stroke-opacity=".34" stroke-dasharray="2 9"/>
+                <circle cx="300" cy="300" r="178" fill="none" stroke="#a9e5cb" stroke-opacity=".22" stroke-dasharray="1 7"/>
+                <path d="M300 80 C420 118 482 212 466 326 C450 440 354 510 240 486 C126 462 58 356 92 242 C126 128 242 78 334 100" fill="none" stroke="#e8c99a" stroke-opacity=".48" stroke-width="1"/>
+                <path d="M300 126 C392 156 436 232 414 316 C392 400 314 446 236 422 C158 398 116 314 142 230 C168 146 250 114 322 132" fill="none" stroke="#a9e5cb" stroke-opacity=".3" stroke-width="1" stroke-dasharray="2 6"/>
+                <path d="M300 180 C356 198 388 248 376 302 C364 356 316 386 264 370 C212 354 184 302 202 250 C220 198 266 174 320 186" fill="none" stroke="#f3e3c6" stroke-opacity=".46" stroke-width="1"/>
+                <path d="M300 238 C326 246 344 274 338 302 C332 330 306 346 280 338 C254 330 242 302 252 276 C262 250 290 240 316 248" fill="none" stroke="#f8e6bf" stroke-opacity=".7" stroke-width="1"/>
+              </g>
+              <g class="tl-vortex-spin tl-vortex-spin--slow">
+                <circle cx="300" cy="300" r="270" fill="none" stroke="#a9e5cb" stroke-opacity=".1" stroke-dasharray="1 18"/>
+                <path d="M300 34 L300 78 M300 522 L300 566 M34 300 L78 300 M522 300 L566 300" stroke="#d8bb8f" stroke-opacity=".38"/>
+              </g>
+              <circle cx="300" cy="300" r="11" fill="#fff3d5" opacity=".9"/>
+              <circle cx="300" cy="300" r="25" fill="none" stroke="#fff3d5" stroke-opacity=".35"/>
+            </svg>
+            <div class="tl-art-label"><span>APERTURE TELEMETRY</span><b id="tl-aperture">W-00</b><small>STABLE / TRANSIT WINDOW 04:17</small></div>
+            <div class="tl-coordinates">LAT 12.08° / LON −47.31°<br/>FOLD AXIS / 0.81 RAD</div>
+          </div>
+        </div>
+        <footer class="tl-foot">
+          <div class="tl-status-line"><i class="tl-dot"></i><span id="tl-status">LOCKING WORMHOLE MOUTH · 锁定入口</span><b id="tl-percent">0%</b></div>
+          <div class="tl-track"><i id="tl-fill"></i></div>
+          <div class="tl-foot-meta"><span>FOLD DRIVE / GRAVITY ANCHOR</span><span>STARWEAVER · 2187</span></div>
+        </footer>
+      </div>
+    </section>
+
+    <!-- IN-TUNNEL HUD -->
+    <div id="tunnel-hud" class="tunnel-hud hidden" aria-hidden="true">
+      <div class="th-head"><span>EINSTEIN–ROSEN BRIDGE</span><span id="th-route">W-00 / 虫洞航道</span></div>
+      <div class="th-center"><b>折跃</b><small>FOLDING SPACETIME</small></div>
+      <div class="th-foot">
+        <div class="th-status"><span id="th-status">TRAVERSING · 穿越中</span><span id="th-speed">0.62c</span></div>
+        <div class="th-track"><i id="th-fill"></i></div>
+      </div>
+    </div>
+
+    <!-- MAIN MENU -->
+    <section id="menu" class="menu-screen hidden">
+      <div class="menu-fallback" aria-hidden="true"></div>
+      <div class="menu-wash"></div>
+      <header class="menu-top">
+        <div class="brand">
+          <div class="brand-mark">S<span>W</span></div>
+          <div class="brand-copy">
+            <strong>STARWEAVER</strong>
+            <span>星际远征 / 01</span>
+          </div>
+        </div>
+        <div class="menu-top-right">
+          <div class="system-readout"><span class="live-dot"></span> 全系统正常 <b>·</b> 链路 98.4%</div>
+          <button class="icon-btn" id="menu-sound" aria-label="声音">◌</button>
+          <button class="icon-btn" id="menu-settings" aria-label="设置">⌘</button>
+        </div>
+      </header>
+
+      <div class="menu-main">
+        <div class="menu-hero">
+          <div class="eyebrow"><span class="eyebrow-line"></span> 宇宙尽头的一座花园</div>
+          <div class="hero-title-wrap">
+            <div class="hero-index">01</div>
+            <h1 class="hero-title-en">VOYAGE OF<br/><em>STARWEAVER</em></h1>
+          </div>
+          <p class="hero-copy">
+            把一座花园，带到宇宙的尽头。<br/>
+            驾驶织星者号，穿行于菌海、赤沙与幽蓝之夜，<br/>
+            为人类留下第一缕光。
+          </p>
+          <div class="menu-actions">
+            <button class="primary-btn" id="start-btn">
+              <span class="btn-index">01</span>
+              <span class="btn-main"><b>启程远航</b><small>新的远征</small></span>
+              <span class="btn-arrow">↗</span>
+            </button>
+            <button class="secondary-btn hidden" id="continue-btn">
+              <span class="btn-main"><b>继续远征</b><small>上次存档</small></span>
+              <span class="btn-arrow">↗</span>
+            </button>
+          </div>
+          <div class="hero-footnote">
+            <span><kbd>WASD</kbd> 移动</span>
+            <span><kbd>鼠标</kbd> 视角</span>
+            <span><kbd>E</kbd> 交互</span>
+            <span><kbd>B</kbd> 建造</span>
+          </div>
+        </div>
+      </div>
+
+      <footer class="menu-footer">
+        <div class="planet-ticker">
+          <span class="ticker-label">已知世界</span>
+          <span><b>V-01</b> 翠绿之森</span>
+          <span><b>E-02</b> 赤沙荒原</span>
+          <span><b>L-03</b> 幽蓝之境</span>
+          <span><b>A-04</b> 流金之冕</span>
+        </div>
+        <div class="menu-build">版本 0.9.8 · THREE.JS / WEBGL 2.0</div>
+        <div class="menu-coord">RA 05h 34m 31.9s · DEC +22° 00′ 52″</div>
+      </footer>
+    </section>
+
+    <!-- GAMEPLAY HUD -->
+    <section id="hud" class="hud hidden">
+      <header class="hud-header">
+        <div class="planet-panel">
+          <div class="planet-orbit-mark">
+            <span class="orbit-dot"></span>
+            <span class="orbit-code" id="hud-planet-code">V-01</span>
+          </div>
+          <div class="planet-identity">
+            <div class="planet-name"><span id="hud-planet-zh">翠绿之森</span><em id="hud-planet-en">VERDANT</em></div>
+            <div class="planet-readout">
+              <span id="hud-biome">温带菌林</span>
+              <span class="sep">/</span>
+              <span id="hud-gravity">0.82 G</span>
+              <span class="sep">/</span>
+              <span id="hud-temp">21°C</span>
+            </div>
+          </div>
+          <div class="planet-bracket"></div>
+        </div>
+
+        <div class="objective-panel">
+          <div class="objective-label"><span class="pulse-dot"></span> 当前航程 <span>ACTIVE THREAD</span></div>
+          <div class="objective-text" id="objective-text">在翠绿之森建立第一座前哨基地</div>
+          <div class="objective-track"><span id="objective-progress"></span></div>
+          <div class="objective-foot"><span id="objective-sub">采集资源 · 建造设施</span><span id="objective-count">0 / 3</span></div>
+        </div>
+
+        <div class="resource-panel">
+          <div class="resource-grid">
+            <div class="resource-item" data-res="alloy"><span class="res-glyph">◆</span><span class="res-name">金属</span><b id="res-alloy">16</b></div>
+            <div class="resource-item" data-res="fiber"><span class="res-glyph">❧</span><span class="res-name">纤维</span><b id="res-fiber">8</b></div>
+            <div class="resource-item" data-res="crystal"><span class="res-glyph">◇</span><span class="res-name">晶体</span><b id="res-crystal">6</b></div>
+            <div class="resource-item" data-res="stardust"><span class="res-glyph">✦</span><span class="res-name">星尘</span><b id="res-stardust">2</b></div>
+          </div>
+          <div class="resource-foot"><span>基地能源 <b id="hud-power">·</b></span><span class="hud-credits">星币 <b id="hud-credits">120</b></span><span id="hud-species">0 SPECIES</span></div>
+        </div>
+      </header>
+
+      <div class="marker-layer" id="world-markers"></div>
+
+      <div class="lock-prompt" id="lock-prompt">
+        <span class="lock-prompt-icon">◎</span>
+        <b>点击画面接管镜头</b>
+        <small>CLICK TO CAPTURE MOUSE · ESC 暂停</small>
+      </div>
+
+      <div class="crosshair" id="crosshair">
+        <span class="ch-dot"></span>
+        <span class="ch-line ch-l"></span><span class="ch-line ch-r"></span><span class="ch-line ch-t"></span><span class="ch-line ch-b"></span>
+        <span class="hit-marker" id="hit-marker">✕</span>
+      </div>
+
+
+      <div class="reticle-label" id="reticle-label"></div>
+
+      <div class="scan-card hidden" id="scan-card">
+        <div class="scan-head"><span>生物扫描 / BIOSCAN</span><button id="scan-close">×</button></div>
+        <div class="scan-body">
+          <div class="scan-silhouette"><span id="scan-glyph">◈</span><i></i></div>
+          <div class="scan-data">
+            <strong id="scan-name">苔团兽</strong>
+            <em id="scan-en">MOSSLING</em>
+            <span id="scan-temper">温顺 · 好奇</span>
+            <p id="scan-desc"></p>
+          </div>
+        </div>
+        <div class="scan-foot"><span id="scan-code">SPECIMEN V-012</span><span>已收录 / ARCHIVED</span></div>
+      </div>
+
+      <div class="hud-bottom">
+        <div class="vitals-panel">
+          <div class="crew-mini">
+            <span class="crew-mini-ring"><i></i></span>
+            <div><b id="hud-crew-name">无名的宇航员</b><span>SUIT INTEGRITY</span></div>
+          </div>
+          <div class="vital-bars">
+            <div class="vital-row"><span>生命</span><div class="bar"><i id="health-bar" style="width:100%"></i></div><b id="health-num">100</b></div>
+            <div class="vital-row stamina"><span>护盾</span><div class="bar"><i id="shield-bar" style="width:100%"></i></div><b id="shield-num">100</b></div>
+          </div>
+          <div class="vital-foot"><span id="mode-label">SURFACE / 地表探索</span><span class="signal-bars"><i></i><i></i><i></i><i></i></span></div>
+        </div>
+
+        <div class="weapon-panel" id="weapon-panel">
+          <div class="weapon-meta"><span>织光手枪 / LUMEN SIDEARM</span><span id="reload-label"></span></div>
+          <div class="ammo-readout"><b id="ammo-count">12</b><span>/<em id="ammo-reserve">48</em></span><div class="ammo-pips" id="ammo-pips"></div></div>
+          <div class="weapon-foot"><span><kbd>R</kbd> 换弹</span><span><kbd>右键</kbd> 瞄准</span><span><kbd>V</kbd> 扫描</span></div>
+        </div>
+      </div>
+
+      <div class="interaction-hint" id="interaction-hint">
+        <span class="keycap" id="interact-key">E</span>
+        <span class="interaction-copy"><b id="interact-text">采集</b><small id="interact-sub">星尘 · +3</small></span>
+        <span class="hold-ring" id="hold-ring"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="16" pathLength="100"></circle><circle id="hold-progress" cx="18" cy="18" r="16" pathLength="100"></circle></svg></span>
+      </div>
+
+      <div class="hud-side">
+        <button class="hud-icon" id="btn-scan" title="扫描">◎<span>V</span></button>
+        <button class="hud-icon" id="btn-map" title="星图">◇<span>M</span></button>
+        <button class="hud-icon" id="btn-build" title="建造">⌗<span>B</span></button>
+        <button class="hud-icon" id="btn-menu" title="暂停">II<span>ESC</span></button>
+      </div>
+
+      <div class="space-hud hidden" id="space-hud">
+        <div class="flight-left">
+          <div class="flight-label"><span class="live-dot"></span> 巡航控制 <em>FLIGHT CONTROL</em></div>
+          <div class="throttle"><div class="throttle-track"><i id="throttle-fill"></i></div><span id="throttle-label">THROTTLE 0%</span></div>
+          <div class="speed-readout"><b id="speed-value">0</b><span>m/s</span></div>
+        </div>
+        <div class="flight-target" id="flight-target">
+          <span class="target-label">目标航向 / COURSE</span>
+          <strong id="target-name">—</strong>
+          <div class="target-meta"><span id="target-distance">—</span><span id="target-eta">—</span></div>
+          <div class="target-line"><i id="target-line-fill"></i></div>
+        </div>
+        <div class="flight-help">
+          <span><kbd>W</kbd> 推进</span><span><kbd>S</kbd> 减速</span><span><kbd>SHIFT</kbd> 巡航</span><span><kbd>F</kbd> 着陆</span>
+        </div>
+      </div>
+
+      <div class="build-bar hidden" id="build-bar">
+        <div class="build-head">
+          <div><span class="pulse-dot"></span> 基地建造模式 <em>CONSTRUCTION MODE</em></div>
+          <span id="build-valid" class="build-valid">定位有效 / READY</span>
+        </div>
+        <div class="build-items" id="build-items"></div>
+        <div class="build-help"><span><kbd>1–5</kbd> 选择</span><span><kbd>Q</kbd><kbd>E</kbd> 旋转</span><span><kbd>鼠标左键</kbd> 确认建造</span><span><kbd>ESC</kbd> 退出</span><span class="build-cost" id="build-cost"></span></div>
+        <div class="build-touch">
+          <span class="build-touch-hint">左右滑动选择设施</span>
+          <button type="button" id="build-rotate">旋转</button>
+          <button type="button" id="build-confirm" class="primary">放置</button>
+          <button type="button" id="build-exit">退出</button>
+        </div>
+      </div>
+
+      <div class="notification-stack" id="notification-stack"></div>
+      <div class="toast-stack" id="toast-stack"></div>
+
+      <div class="interact-context" id="interact-context">
+        <span class="context-key" id="context-key">E</span>
+        <span id="context-copy">登船</span>
+      </div>
+    </section>
+
+    <div class="cinematic-title" id="cinematic-title">
+      <span class="cine-kicker" id="cine-kicker">ARRIVAL / 01</span>
+      <strong id="cine-name">翠绿之森</strong>
+      <em id="cine-en">VERDANT</em>
+      <span class="cine-line"></span>
+      <small id="cine-sub">苔海与光的圣殿</small>
+    </div>
+
+    <!-- STAR MAP -->
+    <section id="starmap" class="overlay-screen hidden">
+      <div class="overlay-top">
+        <div class="overlay-title"><span class="eyebrow">NAVIGATION ARRAY / 星图</span><h2>选择下一道航迹</h2></div>
+        <button class="close-btn" id="starmap-close">关闭 <span>ESC</span></button>
+      </div>
+      <div class="starmap-body">
+        <aside class="starmap-info">
+          <div class="info-index">COURSE <b>SELECT</b></div>
+          <h3 id="map-planet-zh">翠绿之森</h3>
+          <div class="map-en" id="map-planet-en">VERDANT / V-01</div>
+          <p id="map-description">苔海、巨型菌伞与一条通往天空的林间小径。这里是远征队的第一处家园。</p>
+          <div class="map-stats">
+            <div><span>半径 RADIUS</span><b id="map-radius">78 km</b></div>
+            <div><span>重力 GRAVITY</span><b id="map-gravity">0.82 G</b></div>
+            <div><span>生态 BIOME</span><b id="map-biome">温带菌林</b></div>
+            <div><span>资源 RESOURCE</span><b id="map-resource">EXOTIC MATTER</b></div>
+          </div>
+          <div class="map-distance"><span>当前距离 / DISTANCE</span><b id="map-distance">—</b></div>
+        </aside>
+        <div class="orbital-map" id="orbital-map">
+          <canvas id="starmap-canvas"></canvas>
+          <div class="map-scale"><span>0</span><i></i><i></i><i></i><span>2000 m</span></div>
+        </div>
+      </div>
+      <div class="overlay-foot"><span>ORION ARM · SECTOR 47</span><span>星图数据由织星者号实时更新</span><span>2187.09.12</span></div>
+    </section>
+
+    <!-- GALAXY MERCHANT -->
+    <section id="merchant" class="overlay-screen merchant-screen hidden">
+      <div class="merchant-inner">
+        <div class="overlay-top">
+          <div class="overlay-title"><span class="eyebrow">ORBITAL STATION / 宇宙空间站</span><h2>把星尘，换成下一段航程。</h2></div>
+          <button class="close-btn" id="merchant-close">关闭 <span>ESC</span></button>
+        </div>
+        <div class="merchant-grid">
+          <div class="merchant-ledger">
+            <div class="merchant-wallet">
+              <span>可用星币 <small>CREDITS</small></span>
+              <b id="merchant-credits">120</b>
+            </div>
+            <p class="merchant-note">“我只收真正从星球上带回来的东西。价格随星区波动，但星尘永远有人要。”</p>
+            <div class="merchant-section-label"><span>背包物资</span><small>SELL / 出售</small></div>
+            <div class="merchant-list" id="merchant-sell-list"></div>
+            <div class="merchant-foot">出售后星币会直接存入背包，并随航程自动保存。</div>
+          </div>
+          <div class="merchant-supply">
+            <div class="merchant-section-label"><span>商栈补给</span><small>BUY / 购买</small></div>
+            <div class="merchant-list" id="merchant-buy-list"></div>
+            <div class="merchant-stock-note"><span class="live-dot"></span> 商栈在你离开后仍会留在轨道上</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PAUSE -->
+    <section id="pause" class="overlay-screen hidden">
+      <div class="pause-inner">
+        <span class="eyebrow">MISSION PAUSED / 暂停</span>
+        <h2>在群星之间，歇一会。</h2>
+        <div class="pause-actions">
+          <button class="menu-row primary" id="resume-btn"><span>继续远征</span><small>RESUME</small><i>↗</i></button>
+          <button class="menu-row" id="pause-save"><span>保存当前航程</span><small>SAVE EXPEDITION</small><i>↗</i></button>
+          <button class="menu-row" id="pause-settings"><span>视觉与操控</span><small>SETTINGS</small><i>↗</i></button>
+          <button class="menu-row" id="return-menu"><span>返回主菜单</span><small>RETURN TO TITLE</small><i>↗</i></button>
+        </div>
+        <div class="pause-foot"><span id="pause-location">V-01 翠绿之森 · 0.82 G</span><span>进度会自动保存在本机</span></div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="settings" class="overlay-screen settings-screen hidden">
+      <div class="settings-inner">
+        <div class="overlay-top">
+          <div class="overlay-title"><span class="eyebrow">FIELD CONFIGURATION / 设置</span><h2>调整远征参数</h2></div>
+          <button class="close-btn" id="settings-close">关闭 <span>ESC</span></button>
+        </div>
+        <div class="settings-grid">
+          <div class="setting-block">
+            <label>画质档位 <span>GRAPHICS QUALITY</span></label>
+            <div class="segmented" id="quality-seg">
+              <button data-quality="low">低 <small>LOW</small></button>
+              <button data-quality="medium">中 <small>MED</small></button>
+              <button data-quality="high" class="selected">高 <small>HIGH</small></button>
+              <button data-quality="ultra">超高 <small>ULTRA</small></button>
+            </div>
+            <p>调整阴影、体积粒子与星球植被密度。修改后立即生效。</p>
+          </div>
+          <div class="setting-block">
+            <label>鼠标灵敏度 <span>LOOK SENSITIVITY</span></label>
+            <div class="slider-row"><input id="sens-range" type="range" min="0.4" max="2.4" step="0.05" value="1"/><b id="sens-value">1.00</b></div>
+            <p>控制第三人称视角与飞船转向的响应速度。</p>
+          </div>
+          <div class="setting-block">
+            <label>主音量 <span>MASTER VOLUME</span></label>
+            <div class="slider-row"><input id="vol-range" type="range" min="0" max="1" step="0.02" value="0.55"/><b id="vol-value">55</b></div>
+            <p>环境、音乐与操作反馈的总音量。</p>
+          </div>
+          <div class="setting-block">
+            <label>镜头 <span>CAMERA</span></label>
+            <div class="toggle-row"><span>颠簸与呼吸手持感</span><button class="switch on" id="shake-toggle"><i></i></button></div>
+            <div class="toggle-row"><span>电影宽银幕提示</span><button class="switch on" id="cine-toggle"><i></i></button></div>
+            <p>推荐保持开启，以获得更完整的电影化体验。</p>
+          </div>
+        </div>
+        <div class="settings-foot"><span>VERSION 0.9.7 · STARWEAVER FLIGHT OS</span><button class="primary-btn compact" id="settings-done"><span class="btn-main"><b>完成</b><small>APPLY</small></span><span class="btn-arrow">↗</span></button></div>
+      </div>
+    </section>
+
+    <!-- GRAVITY WARNING -->
+    <section id="gravity-warning" class="gravity-warning hidden" aria-live="polite">
+      <div class="gravity-warning-line"></div>
+      <span class="eyebrow danger">GRAVITY WELL / 引力井</span>
+      <strong>您已进入黑洞的引力范围</strong>
+      <small>事件视界前方不可逆转 · 立即转向</small>
+    </section>
+
+    <!-- AURELIS STORM LOADING -->
+    <section id="storm-loading" class="storm-loading hidden" aria-live="polite">
+      <div class="storm-loading-inner">
+        <span class="sl-kicker">A-04 · CASSINI DIVISION</span>
+        <h2 class="sl-title">进入卡西尼环带</h2>
+        <p class="sl-sub">流金之冕 · 高速风暴层</p>
+        <div class="sl-bar"><i id="storm-loading-fill"></i></div>
+        <div class="sl-meta">
+          <span id="storm-loading-pct">0%</span>
+          <span>穿越环缝 · 正在下降</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- AURELIS STORM HUD -->
+    <div id="storm-hud" class="storm-hud hidden" aria-live="polite">
+      <div class="storm-hud-frame"></div>
+      <span class="storm-kicker">CASSINI DIVISION · 卡西尼环带</span>
+      <strong class="storm-title">在风暴中穿梭</strong>
+    </div>
+
+    <!-- BLACK HOLE DEATH -->
+    <div id="blackhole-death-fade" class="blackhole-death-fade"></div>
+    <section id="blackhole-death" class="blackhole-death hidden" aria-live="assertive">
+      <div class="blackhole-death-inner">
+        <span class="eyebrow danger">TIDAL RUPTURE / 潮汐撕裂</span>
+        <h2>您已被<br/>黑洞引力撕裂</h2>
+        <p>织星者号的信号在事件视界内消失。<br/>没有返航航道，只有被拉长的最后一道光。</p>
+        <button class="primary-btn" id="blackhole-death-menu">
+          <span class="btn-main"><b>返回主菜单</b><small>RETURN TO ORION</small></span>
+          <span class="btn-arrow">↗</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- AURELIS STORM DEATH -->
+    <section id="sun-death" class="blackhole-death hidden" aria-live="assertive">
+      <div class="blackhole-death-inner">
+        <span class="eyebrow danger">HELIOSPHERE / 日冕</span>
+        <h2>被太阳<br/>吞没</h2>
+        <p>外壳在三千度里失声。<br/>织星者号没有留下任何信号。</p>
+        <button class="primary-btn" id="sun-death-menu">
+          <span class="btn-main"><b>返回主菜单</b><small>RETURN TO ORION</small></span>
+          <span class="btn-arrow">↗</span>
+        </button>
+      </div>
+    </section>
+
+    <section id="station-locked" class="blackhole-death hidden" aria-live="polite">
+      <div class="blackhole-death-inner">
+        <span class="eyebrow">ORBITAL STATION / 宇宙空间站</span>
+        <h2>宇宙空间站<br/>暂不开放</h2>
+        <p>对接通道尚未启用。<br/>补给与交易将在后续版本开放。</p>
+        <button class="primary-btn" id="station-locked-btn">
+          <span class="btn-main"><b>返回航行</b><small>RESUME FLIGHT</small></span>
+          <span class="btn-arrow">↗</span>
+        </button>
+      </div>
+    </section>
+
+    <section id="station-crash" class="blackhole-death hidden" aria-live="assertive">
+      <div class="blackhole-death-inner">
+        <span class="eyebrow danger">COLLISION / 相撞</span>
+        <h2>与空间站<br/>相撞</h2>
+        <p>对接臂撕开了船体。<br/>空间站和织星者号一起，碎在了这条轨道上。</p>
+        <button class="primary-btn" id="station-crash-menu">
+          <span class="btn-main"><b>返回主菜单</b><small>RETURN TO ORION</small></span>
+          <span class="btn-arrow">↗</span>
+        </button>
+      </div>
+    </section>
+
+    <section id="storm-death" class="blackhole-death hidden" aria-live="assertive">
+      <div class="blackhole-death-inner">
+        <span class="eyebrow danger">LOST IN THE STORM / 迷失于风暴</span>
+        <h2>您已在高速风暴中<br/>迷失</h2>
+        <p>环的碎片切断了通讯。<br/>织星者号最后一次传回的画面，是金色的云墙。</p>
+        <button class="primary-btn" id="storm-death-menu">
+          <span class="btn-main"><b>返回主菜单</b><small>RETURN TO ORION</small></span>
+          <span class="btn-arrow">↗</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- DEATH -->
+    <section id="death" class="overlay-screen death-screen hidden">
+      <div class="death-inner">
+        <span class="eyebrow danger">SUIT SIGNAL LOST / 生命信号丢失</span>
+        <h2>星光仍在，<br/>只是你需要重新站起来。</h2>
+        <p>织星者号记录了你的位置。返回最近的营地，整理装备，再次出发。</p>
+        <button class="primary-btn" id="respawn-btn"><span class="btn-main"><b>重整旗鼓</b><small>REVIVE AT CAMP</small></span><span class="btn-arrow">↗</span></button>
+      </div>
+    </section>
+
+    <!-- TOUCH -->
+    <div id="touch-controls" class="touch-controls">
+      <div class="touch-look"></div>
+      <div class="touch-stick"><span class="stick-ring"></span><span class="stick-knob"></span><small id="stick-label">MOVE</small></div>
+      <div class="touch-actions">
+        <button data-touch="Space" class="t-btn jump">跳<small>JUMP</small></button>
+        <button data-touch="KeyE" class="t-btn action" id="touch-interact">E<small>互动</small></button>
+        <button data-touch="MouseRight" class="t-btn aim">瞄<small>AIM</small></button>
+        <button data-touch="MouseLeft" class="t-btn fire">✦<small>FIRE</small></button>
+      </div>
+      <div class="touch-top">
+        <button data-touch="KeyM" class="t-small">星图</button>
+        <button data-touch="KeyB" class="t-small">建造</button>
+        <button data-touch="Escape" class="t-small">II</button>
+      </div>
+    </div>
+
+    <div id="transition-fade"></div>
+  </div>
+</body>
+</html>
