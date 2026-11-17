@@ -58121,8 +58121,50 @@ class AudioEngine {
   }
 
   startWormholeDrone(fade = 1.4, level = 0.9) {
-    // —— 按需求：黑洞低频嗡鸣整层静音，只保留两首 BGM ——
-    return;
+    if (!this.ready && !this.droneEl) return;
+    // 先把上一段（如果有）掐掉，避免反复穿越时叠音。
+    this.stopWormholeDrone(0.05);
+    const t = this.ctx.currentTime;
+    // 黑洞低鸣接管时把程序化配乐压下去，让素材成为主角。
+    this._bgmDuck = 0.16;
+    this._applyBgmVolume();
+    if (this.droneBuffer) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.droneBuffer;
+      src.loop = true;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(level, t + fade);
+      src.connect(g).connect(this.master || this.ctx.destination);
+      src.start(t);
+      this.droneSource = src;
+      this.droneGain = g;
+      return;
+    }
+    if (this.droneEl) {
+      const el = this.droneEl;
+      try {
+        el.currentTime = 0;
+        el.muted = this.muted;
+        const from = 0;
+        const to = Math.min(1, level * (this.volume ?? 0.55));
+        const steps = Math.max(1, Math.round(fade * 30));
+        let i = 0;
+        clearInterval(this._droneFade);
+        this._droneFade = setInterval(() => {
+          i += 1;
+          el.volume = Math.min(1, Math.max(0, from + (to - from) * (i / steps)));
+          if (i >= steps) {
+            clearInterval(this._droneFade);
+            this._droneFade = null;
+          }
+        }, 32);
+        const p = el.play();
+        if (p && p.catch) p.catch(() => {});
+      } catch (err) {
+        console.warn('[audio] 黑洞低鸣播放失败：', err);
+      }
+    }
   }
 
   stopWormholeDrone(fade = 1.6) {
@@ -58166,6 +58208,10 @@ class AudioEngine {
     }
     if (this.ready && this.musicBus) {
       this.musicBus.gain.setTargetAtTime(0.6, this.ctx.currentTime, fade <= 0.06 ? 0.05 : 1.2);
+    }
+    if (this._bgmDuck !== 1) {
+      this._bgmDuck = 1;
+      this._applyBgmVolume();
     }
   }
 
@@ -58247,7 +58293,8 @@ class AudioEngine {
     if (!this.bgmEl) return;
     const level = this._bgmLevel ?? 0.5;
     const master = this.volume ?? 0.55;
-    this.bgmEl.volume = Math.min(1, level * master);
+    const duck = this._bgmDuck ?? 1;
+    this.bgmEl.volume = Math.min(1, level * master * duck);
   }
 
   // 一首放完自动切另一首，实现两首 BGM 随机轮播、全程不断
@@ -58412,83 +58459,177 @@ class Input {
   }
 
   bindTouch() {
+    const wrap = document.querySelector('.touch-move');
     const stick = document.querySelector('.touch-stick');
-    if (stick) {
-      const knob = stick.querySelector('.stick-knob');
-      let id = null;
-      const update = (e) => {
-        const r = stick.getBoundingClientRect();
-        const cx = r.left + r.width / 2;
-        const cy = r.top + r.height / 2;
-        let x = (e.clientX - cx) / (r.width * 0.38);
-        let y = (e.clientY - cy) / (r.height * 0.38);
-        const len = Math.hypot(x, y);
-        if (len > 1) { x /= len; y /= len; }
-        this.touchMove.x = clamp(x, -1, 1);
-        this.touchMove.y = clamp(y, -1, 1);
-        if (knob) knob.style.transform = `translate(${x * 36}px, ${y * 36}px)`;
-      };
-      stick.addEventListener('pointerdown', (e) => {
-        id = e.pointerId;
-        stick.setPointerCapture(id);
-        update(e);
-      });
-      stick.addEventListener('pointermove', (e) => {
-        if (e.pointerId === id) update(e);
-      });
-      const end = (e) => {
-        if (e.pointerId !== id) return;
-        id = null;
-        this.touchMove.x = 0;
-        this.touchMove.y = 0;
-        if (knob) knob.style.transform = '';
-      };
-      stick.addEventListener('pointerup', end);
-      stick.addEventListener('pointercancel', end);
-    }
+    const knob = stick?.querySelector('.stick-knob');
     const look = document.querySelector('.touch-look');
+
+    // 浮动摇杆：左半屏任意位置按下即为摇杆原点（主流手游做法）
+    this._moveTarget = { x: 0, y: 0 };
+    this._moveOut = { x: 0, y: 0 };
+    this.touchMove = this._moveOut;
+
+    const DEAD = 0.12;      // 死区
+    const MAXR = 68;        // 满偏半径（px）
+    const KNOB = 34;        // 摇杆帽最大位移（px）
+
+    let sid = null;
+    let ox = 0;
+    let oy = 0;
+
+    const setKnob = (x, y, active) => {
+      if (!knob) return;
+      knob.style.transition = active ? 'none' : 'transform .18s cubic-bezier(.2,.9,.2,1)';
+      knob.style.transform = `translate(${x * KNOB}px, ${y * KNOB}px)`;
+    };
+
+    const placeStick = (cx, cy) => {
+      if (!stick) return;
+      const r = stick.getBoundingClientRect();
+      stick.style.left = `${cx - r.width / 2}px`;
+      stick.style.top = `${cy - r.height / 2}px`;
+      stick.style.bottom = 'auto';
+      stick.classList.add('active');
+    };
+
+    const resetStick = () => {
+      if (!stick) return;
+      stick.style.left = '';
+      stick.style.top = '';
+      stick.style.bottom = '';
+      stick.classList.remove('active');
+    };
+
+    const updateStick = (cx, cy) => {
+      const dx = cx - ox;
+      const dy = cy - oy;
+      const len = Math.hypot(dx, dy);
+      const norm = len / MAXR;
+      let nx = 0;
+      let ny = 0;
+      if (norm > DEAD && len > 0.001) {
+        const k = Math.min(1, (norm - DEAD) / (1 - DEAD));
+        const shaped = Math.pow(k, 1.15);      // 轻微曲线：小幅度更细腻，大幅度仍能打满
+        nx = (dx / len) * shaped;
+        ny = (dy / len) * shaped;
+      }
+      this._moveTarget.x = nx;
+      this._moveTarget.y = ny;
+      setKnob(nx, ny, true);
+    };
+
+    const endStick = () => {
+      sid = null;
+      this._moveTarget.x = 0;
+      this._moveTarget.y = 0;
+      setKnob(0, 0, false);
+      resetStick();
+    };
+
+    if (wrap) {
+      wrap.addEventListener('pointerdown', (e) => {
+        if (!this.enabled || sid !== null) return;
+        e.preventDefault();
+        sid = e.pointerId;
+        ox = e.clientX;
+        oy = e.clientY;
+        placeStick(ox, oy);
+        try { wrap.setPointerCapture(sid); } catch (err) { /* ignore */ }
+        updateStick(ox, oy);
+        navigator.vibrate?.(8);
+      });
+      wrap.addEventListener('pointermove', (e) => {
+        if (e.pointerId !== sid) return;
+        e.preventDefault();
+        updateStick(e.clientX, e.clientY);
+      });
+      const end = (e) => { if (e.pointerId === sid) endStick(); };
+      wrap.addEventListener('pointerup', end);
+      wrap.addEventListener('pointercancel', end);
+      wrap.addEventListener('lostpointercapture', () => { if (sid !== null) endStick(); });
+      // 兜底：手指在容器外抬起 / 浏览器吞掉 pointerup 时也要归零
+      window.addEventListener('pointerup', (e) => { if (sid !== null && e.pointerId === sid) endStick(); }, true);
+      window.addEventListener('pointercancel', (e) => { if (sid !== null && e.pointerId === sid) endStick(); }, true);
+      window.addEventListener('blur', () => { if (sid !== null) endStick(); });
+    }
+
+    // 摇杆向量做指数平滑：既压住抖动，又不会拖手
+    if (this.isTouch) {
+      let last = performance.now();
+      const tick = (t) => {
+        const dt = Math.min(0.05, Math.max(0.001, (t - last) / 1000));
+        last = t;
+        const idle = this._moveTarget.x === 0 && this._moveTarget.y === 0;
+        const k = 1 - Math.exp(-dt * (idle ? 46 : 26));
+        this._moveOut.x += (this._moveTarget.x - this._moveOut.x) * k;
+        this._moveOut.y += (this._moveTarget.y - this._moveOut.y) * k;
+        if (idle && Math.abs(this._moveOut.x) < 0.12 && Math.abs(this._moveOut.y) < 0.12) {
+          this._moveOut.x = 0;
+          this._moveOut.y = 0;
+        } else {
+          if (Math.abs(this._moveOut.x) < 0.002) this._moveOut.x = 0;
+          if (Math.abs(this._moveOut.y) < 0.002) this._moveOut.y = 0;
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }
+
+    // 右侧拖动环顾：丢首帧、限幅、按屏幕尺度换算灵敏度
     if (look) {
-      let id = null;
-      let lastX = 0;
-      let lastY = 0;
+      let lid = null;
+      let lx = 0;
+      let ly = 0;
+      let first = true;
+      const scale = () => (window.innerWidth >= 900 ? 2.0 : 2.35);
       look.addEventListener('pointerdown', (e) => {
-        id = e.pointerId;
-        lastX = e.clientX;
-        lastY = e.clientY;
-        look.setPointerCapture(id);
+        if (!this.enabled || lid !== null) return;
+        e.preventDefault();
+        lid = e.pointerId;
+        lx = e.clientX;
+        ly = e.clientY;
+        first = true;
+        try { look.setPointerCapture(lid); } catch (err) { /* ignore */ }
       });
       look.addEventListener('pointermove', (e) => {
-        if (e.pointerId !== id) return;
-        this.deltaX += (e.clientX - lastX) * 2.1;
-        this.deltaY += (e.clientY - lastY) * 2.1;
-        lastX = e.clientX;
-        lastY = e.clientY;
+        if (e.pointerId !== lid) return;
+        e.preventDefault();
+        const dx = e.clientX - lx;
+        const dy = e.clientY - ly;
+        lx = e.clientX;
+        ly = e.clientY;
+        if (first) { first = false; return; }          // 丢掉按下后的第一帧跳变
+        if (Math.abs(dx) > 90 || Math.abs(dy) > 90) return; // 异常值直接丢弃
+        const s2 = scale();
+        this.deltaX = clamp(this.deltaX + clamp(dx * s2, -110, 110), -420, 420);
+        this.deltaY = clamp(this.deltaY + clamp(dy * s2, -110, 110), -420, 420);
       });
-      const end = (e) => {
-        if (e.pointerId !== id) return;
-        id = null;
-      };
-      look.addEventListener('pointerup', end);
-      look.addEventListener('pointercancel', end);
+      const lend = (e) => { if (e.pointerId === lid) lid = null; };
+      look.addEventListener('pointerup', lend);
+      look.addEventListener('pointercancel', lend);
+      look.addEventListener('lostpointercapture', lend);
     }
+
     document.querySelectorAll('[data-touch]').forEach((btn) => {
       const code = btn.dataset.touch;
+      let held = null;
       const press = (e) => {
         e.preventDefault();
+        held = e.pointerId;
         this.virtualPress(btn.dataset.touch || code);
         btn.classList.add('active');
+        navigator.vibrate?.(6);
       };
       const release = (e) => {
-        e.preventDefault();
+        if (held !== null && e && e.pointerId !== held) return;
+        held = null;
         this.virtualRelease(btn.dataset.touch || code);
         btn.classList.remove('active');
       };
       btn.addEventListener('pointerdown', press);
       btn.addEventListener('pointerup', release);
       btn.addEventListener('pointercancel', release);
-      btn.addEventListener('pointerleave', (e) => {
-        if (e.buttons) release(e);
-      });
+      btn.addEventListener('lostpointercapture', release);
     });
   }
 
@@ -61516,6 +61657,21 @@ class UI {
     this.emitSettings();
   }
 
+  enterLandscape() {
+    if (!this.isTouch()) return;
+    // 桌面（哪怕带触摸屏的笔电）绝不请求全屏：进出全屏会重排画布，看起来就是闪屏
+    if (this._landscapeTried) return;
+    this._landscapeTried = true;
+    const lock = () => {
+      try { screen.orientation?.lock?.('landscape').catch(() => {}); } catch (e) { /* ignore */ }
+    };
+    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().then(lock).catch(lock);
+    } else {
+      lock();
+    }
+  }
+
   isTouch() {
     return matchMedia('(pointer: coarse)').matches;
   }
@@ -61534,7 +61690,7 @@ class UI {
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem('starweaver.settings.v2') || '{}'); } catch (e) { saved = {}; }
     return {
-      quality: saved.quality || (this.isTouch() ? 'low' : 'medium'),
+      quality: saved.quality || 'medium',
       sensitivity: saved.sensitivity ?? 1.0,
       volume: saved.volume ?? 0.55,
       shake: saved.shake ?? true,
@@ -61561,6 +61717,9 @@ class UI {
   }
 
   bind() {
+    const hintEl = $('#rotate-hint');
+    hintEl?.addEventListener('pointerdown', (e) => { e.preventDefault(); this.enterLandscape(); });
+    hintEl?.addEventListener('click', (e) => { e.preventDefault(); this.enterLandscape(); });
     $('#start-btn').addEventListener('click', () => {
       this.game?.audio?.uiConfirm?.();
       this.game?.startNewGame?.();
@@ -72907,16 +73066,9 @@ class Game {
       this.perfFrames++;
       this.perfTime += Math.min(raw, 0.25);
       if (this.perfTime > 2.8) {
-        const fps = this.perfFrames / this.perfTime;
+        this.perfFrames / this.perfTime;
         this.perfAutoDone = true;
-        if (fps < 30 && this.settings.quality !== 'low') {
-          const next = this.settings.quality === 'ultra' ? 'high' : this.settings.quality === 'high' ? 'medium' : 'low';
-          this.settings.quality = next;
-          this.ui.settings.quality = next;
-          this.ui.applySettingsToDOM();
-          this.applySettings(this.settings);
-          this.ui.showToast('已自动调整画质以保持操作流畅 · 可在设置中修改', 4200);
-        }
+        // 不自动降档：重建后期/阴影目标会造成一次可见的闪屏，画质只由玩家手动选择
       }
     }
     if (this.mode === 'menu') this.updateMenu(dt);
@@ -73658,7 +73810,12 @@ class Game {
     if (this.input.isTouch && Math.abs(canvas.touchMove.y) > 0.12) {
       this.throttle = clamp(this.throttle - canvas.touchMove.y * dt * 0.9, 0, 1);
     }
-    this.boost = canvas.down('ShiftLeft') || canvas.down('ShiftRight');
+    // 触屏：左摇杆左右打 = 偏航，推到底 = 加速
+    if (this.input.isTouch && Math.abs(canvas.touchMove.x) > 0.12) {
+      q.multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), canvas.touchMove.x * dt * 1.25));
+    }
+    this.boost = canvas.down('ShiftLeft') || canvas.down('ShiftRight')
+      || (this.input.isTouch && canvas.touchMove.y < -0.93);
     const baseMax = 92;
     const max = this.boost ? 265 : baseMax;
     const targetSpeed = this.throttle * max;
