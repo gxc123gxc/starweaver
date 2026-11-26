@@ -62982,11 +62982,14 @@ class UI {
         el.classList.remove('visible');
         continue;
       }
-      el.classList.add('visible');
-      el.style.transform = `translate(${item.x}px, ${item.y}px) translate(-50%, -50%)`;
-      el.style.left = '0px';
-      el.style.top = '0px';
-      if (item.opacity != null) el.style.opacity = String(item.opacity);
+      if (!el.classList.contains('visible')) el.classList.add('visible');
+      const tf = `translate(${Math.round(item.x * 2) / 2}px, ${Math.round(item.y * 2) / 2}px) translate(-50%, -50%)`;
+      if (el._tf !== tf) { el._tf = tf; el.style.transform = tf; }
+      if (el.style.left !== '0px') { el.style.left = '0px'; el.style.top = '0px'; }
+      if (item.opacity != null) {
+        const op = String(Math.round(item.opacity * 20) / 20);
+        if (el._op !== op) { el._op = op; el.style.opacity = op; }
+      }
     }
     for (const [id, el] of this.markers) {
       if (!alive.has(id)) {
@@ -71797,12 +71800,16 @@ class Game {
     this.scene = new Scene();
     this.camera = new PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.08, 40000);
     this.camera.position.set(0, 0, 30);
+    const _holdParam = new URLSearchParams(location.search).get('hold');
     this.renderer = new WebGLRenderer({
       canvas: this.canvas,
       antialias: true,
       alpha: false,
       stencil: false,
       powerPreference: 'high-performance',
+      // 165Hz 等高刷屏上，浏览器会在 DOM 更新时重新合成；若绘图缓冲已被换出，
+      // 合成器会采到空白 -> 表现为整块/半块黑帧闪屏。保留缓冲可彻底避免这一类闪。
+      preserveDrawingBuffer: _holdParam !== '0',
     });
     this.renderer.outputColorSpace = SRGBColorSpace;
     this.renderer.toneMapping = ACESFilmicToneMapping;
@@ -73107,9 +73114,14 @@ class Game {
     else if (this.mode === 'dead') ;
     this.updateEnvironment(dt);
     this.updateSpaceBooms(dt);
-    this.updateHUD(dt);
-    this.updateMarkers();
-    this.ui.updateMarkers(this.markerData);
+    // DOM 层限流到 ~30Hz：每帧写 transform/textContent 会让合成器每帧提交，
+    // 在高刷屏上与 WebGL 换帧竞争，是闪屏的另一半原因。
+    if (this.time - (this._uiTick || 0) >= 0.033) {
+      this._uiTick = this.time;
+      this.updateHUD(dt);
+      this.updateMarkers();
+      this.ui.updateMarkers(this.markerData);
+    }
     this.updateLockPrompt();
     this.render(dt);
     this.input.endFrame();
