@@ -71830,6 +71830,18 @@ class Game {
     this.audio = new AudioEngine();
     this.settings = this.ui.settings;
     this.quality = this.settings.quality;
+    // URL 开关：?safe=1 保守模式（低画质 + 锁 60 + 关阴影/后期）
+    //           ?cap=60 只锁帧率；?q=low|medium|high|ultra 强制画质；?diag=1 显示帧率诊断条
+    const _qs = new URLSearchParams(location.search);
+    this.frameCap = Math.max(0, Number(_qs.get('cap') || 0) || 0);
+    this.safeMode = _qs.get('safe') === '1';
+    this.diagOn = _qs.get('diag') === '1';
+    const _forcedQ = _qs.get('q');
+    if (['low', 'medium', 'high', 'ultra'].includes(_forcedQ)) this.settings.quality = _forcedQ;
+    if (this.safeMode) {
+      this.settings.quality = 'low';
+      if (!this.frameCap) this.frameCap = 60;
+    }
     this.mode = 'boot';
     this.paused = false;
     this.overlayOpen = false;
@@ -72520,7 +72532,7 @@ class Game {
     this.exposureScale = settings.quality === 'ultra' ? 0.80 : settings.quality === 'high' ? 0.90 : 1;
     if (this.renderer) {
       if (this._exposureBase != null) this.setToneExposure(this._exposureBase);
-      const cap = settings.quality === 'ultra' ? 2.0 : settings.quality === 'high' ? 1.3 : settings.quality === 'medium' ? 1.0 : 0.75;
+      const cap = this.safeMode ? 0.75 : settings.quality === 'ultra' ? 2.0 : settings.quality === 'high' ? 1.3 : settings.quality === 'medium' ? 1.0 : 0.75;
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, cap));
       if (this.postFX) this.postFX.setQuality(settings.quality);
       this.blackHole?.setDiskGain?.(settings.quality === 'ultra' ? 0.76 : settings.quality === 'high' ? 0.92 : 1.18);
@@ -72528,7 +72540,7 @@ class Game {
       this.speedLines?.setQuality?.(settings.quality);
       const sfCount = settings.quality === 'low' ? 1500 : settings.quality === 'ultra' ? 4200 : 2700;
       if (this.starfield?.geometry) this.starfield.geometry.setDrawRange(0, sfCount);
-      this.renderer.shadowMap.enabled = settings.quality !== 'low';
+      this.renderer.shadowMap.enabled = !this.safeMode && settings.quality !== 'low';
       if (this.sunLight) {
         const shadowSize = settings.quality === 'ultra' ? 2048 : settings.quality === 'high' ? 1536 : 1024;
         this.sunLight.shadow.mapSize.set(shadowSize, shadowSize);
@@ -73047,6 +73059,13 @@ class Game {
   // ---------------- update loop ----------------
   tick() {
     const raw = this.clock.getDelta();
+    if (this.frameCap > 0) {
+      this._capAcc = (this._capAcc || 0) + raw;
+      const step = 1 / this.frameCap;
+      if (this._capAcc < step) return;
+      this._capAcc = this._capAcc % step;
+    }
+    if (this.diagOn) this._diagTick(raw);
     // Do not let the whole simulation turn into slow motion on a slow GPU.
     // Input, camera and physics all advance on real elapsed time up to 100 ms.
     const dt = Math.min(raw, 0.1);
@@ -76415,6 +76434,33 @@ class Game {
     this.ui.setCinematic(false);
     this.ui.hideLocationCard();
     this.revealMenuScene();
+  }
+
+  _diagTick(raw) {
+    if (!this._diagEl) {
+      const el = document.createElement('div');
+      el.id = 'diag-bar';
+      el.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:9999;font:11px/1.5 ui-monospace,Consolas,monospace;color:#cfe;background:rgba(0,0,0,.55);padding:6px 9px;border-radius:4px;pointer-events:none;white-space:pre';
+      document.body.appendChild(el);
+      this._diagEl = el;
+      this._diagFrames = 0;
+      this._diagTime = 0;
+      this._diagMax = 0;
+      this._diagDrop = 0;
+    }
+    this._diagFrames++;
+    this._diagTime += raw;
+    if (raw > 1 / 40) this._diagDrop++;
+    if (raw > this._diagMax) this._diagMax = raw;
+    if (this._diagTime >= 0.5) {
+      const fps = this._diagFrames / this._diagTime;
+      const ms = (this._diagTime / this._diagFrames) * 1000;
+      this._diagEl.textContent =
+        'fps ' + fps.toFixed(0) + '  avg ' + ms.toFixed(1) + 'ms  max ' + (this._diagMax * 1000).toFixed(0) + 'ms\n' +
+        'slow(>25ms) ' + this._diagDrop + '  q=' + this.quality + '  dpr=' + this.renderer.getPixelRatio().toFixed(2) + '  cap=' + (this.frameCap || 'off') + '\n' +
+        'mode ' + this.mode + (this.safeMode ? '  SAFE' : '');
+      this._diagFrames = 0; this._diagTime = 0; this._diagMax = 0; this._diagDrop = 0;
+    }
   }
 }
 
