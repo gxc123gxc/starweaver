@@ -72006,6 +72006,7 @@ class Game {
     this.revealMenuScene();
     this.clock.start();
     this.renderer.setAnimationLoop(this.tick);
+    this.resize(); // 启动时就把 backing store 对齐成整数像素，避免非整数缩放重采样
   }
 
   setupRendererTextures() {
@@ -72567,11 +72568,23 @@ class Game {
   }
 
   resize() {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+    // 让「绘图缓冲像素数」成为整数，并且 canvas 的 CSS 尺寸与它严格成 dpr 倍。
+    // 150% 缩放下 window.innerWidth 常是奇数（1707），1707 * 1.5 = 2560.5，
+    // 浏览器会把 backing store 截成 2560，而 CSS 仍是 1707px -> 缩放 1.4997 非整数，
+    // 合成器每帧都要重采样这张 canvas，在 165Hz 上就表现为整块/半块黑帧的闪屏。
+    const dpr = this.renderer.getPixelRatio() || 1;
+    let w = Math.max(2, window.innerWidth);
+    let h = Math.max(2, window.innerHeight);
+    let guard = 0;
+    while ((w * dpr) % 1 !== 0 && guard++ < 256) w -= 1;
+    while ((h * dpr) % 1 !== 0 && guard++ < 512) h -= 1;
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
+    if (this.canvas) {
+      this.canvas.style.width = w + 'px';
+      this.canvas.style.height = h + 'px';
+    }
     this.postFX?.setSize(w, h);
     this.tunnel?.resize?.(w, h);
     this.building?.resize?.();
