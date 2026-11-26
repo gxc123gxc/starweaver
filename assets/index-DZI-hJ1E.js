@@ -71843,6 +71843,7 @@ class Game {
     this.frameCap = Math.max(0, Number(_qs.get('cap') || 0) || 0);
     this.safeMode = _qs.get('safe') === '1';
     this.diagOn = _qs.get('diag') === '1';
+    this.bareMode = _qs.get('bare') === '1';
     const _forcedQ = _qs.get('q');
     if (['low', 'medium', 'high', 'ultra'].includes(_forcedQ)) this.settings.quality = _forcedQ;
     if (this.safeMode) {
@@ -73073,6 +73074,7 @@ class Game {
       this._capAcc = this._capAcc % step;
     }
     if (this.diagOn) this._diagTick(raw);
+    if (this.bareMode && !this._bareApplied) this._applyBareMode();
     // Do not let the whole simulation turn into slow motion on a slow GPU.
     // Input, camera and physics all advance on real elapsed time up to 100 ms.
     const dt = Math.min(raw, 0.1);
@@ -73116,7 +73118,7 @@ class Game {
     this.updateSpaceBooms(dt);
     // DOM 层限流到 ~30Hz：每帧写 transform/textContent 会让合成器每帧提交，
     // 在高刷屏上与 WebGL 换帧竞争，是闪屏的另一半原因。
-    if (this.time - (this._uiTick || 0) >= 0.033) {
+    if (!this.bareMode && this.time - (this._uiTick || 0) >= 0.033) {
       this._uiTick = this.time;
       this.updateHUD(dt);
       this.updateMarkers();
@@ -76446,6 +76448,19 @@ class Game {
     this.ui.setCinematic(false);
     this.ui.hideLocationCard();
     this.revealMenuScene();
+  }
+
+  _applyBareMode() {
+    if (!this.bareMode || this._bareApplied) return;
+    this._bareApplied = true;
+    const ids = ['#menu', '#hud', '#space-hud', '#world-markers', '#boot', '#cinematic-title',
+      '#gravity-warning', '#interact', '#context-prompt', '#build-bar', '#weapon-panel',
+      '#starmap', '#pause', '#settings', '#death', '#blackhole-death', '#flight-target',
+      '#vitals', '.vitals-panel', '#markers', '#toast'];
+    for (const sel of ids) {
+      document.querySelectorAll(sel).forEach((el) => { el.style.display = 'none'; });
+    }
+    document.documentElement.style.background = '#000';
   }
 
   _diagTick(raw) {
