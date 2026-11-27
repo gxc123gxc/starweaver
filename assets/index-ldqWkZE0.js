@@ -71809,7 +71809,7 @@ class Game {
       powerPreference: 'high-performance',
       // 165Hz 等高刷屏上，浏览器会在 DOM 更新时重新合成；若绘图缓冲已被换出，
       // 合成器会采到空白 -> 表现为整块/半块黑帧闪屏。保留缓冲可彻底避免这一类闪。
-      preserveDrawingBuffer: _holdParam !== '0',
+      preserveDrawingBuffer: _holdParam === '1',
     });
     this.renderer.outputColorSpace = SRGBColorSpace;
     this.renderer.toneMapping = ACESFilmicToneMapping;
