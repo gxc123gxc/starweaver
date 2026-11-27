@@ -62982,14 +62982,11 @@ class UI {
         el.classList.remove('visible');
         continue;
       }
-      if (!el.classList.contains('visible')) el.classList.add('visible');
-      const tf = `translate(${Math.round(item.x * 2) / 2}px, ${Math.round(item.y * 2) / 2}px) translate(-50%, -50%)`;
-      if (el._tf !== tf) { el._tf = tf; el.style.transform = tf; }
-      if (el.style.left !== '0px') { el.style.left = '0px'; el.style.top = '0px'; }
-      if (item.opacity != null) {
-        const op = String(Math.round(item.opacity * 20) / 20);
-        if (el._op !== op) { el._op = op; el.style.opacity = op; }
-      }
+      el.classList.add('visible');
+      el.style.transform = `translate(${item.x}px, ${item.y}px) translate(-50%, -50%)`;
+      el.style.left = '0px';
+      el.style.top = '0px';
+      if (item.opacity != null) el.style.opacity = String(item.opacity);
     }
     for (const [id, el] of this.markers) {
       if (!alive.has(id)) {
@@ -71800,16 +71797,12 @@ class Game {
     this.scene = new Scene();
     this.camera = new PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.08, 40000);
     this.camera.position.set(0, 0, 30);
-    const _holdParam = new URLSearchParams(location.search).get('hold');
     this.renderer = new WebGLRenderer({
       canvas: this.canvas,
       antialias: true,
       alpha: false,
       stencil: false,
       powerPreference: 'high-performance',
-      // 165Hz 等高刷屏上，浏览器会在 DOM 更新时重新合成；若绘图缓冲已被换出，
-      // 合成器会采到空白 -> 表现为整块/半块黑帧闪屏。保留缓冲可彻底避免这一类闪。
-      preserveDrawingBuffer: _holdParam === '1',
     });
     this.renderer.outputColorSpace = SRGBColorSpace;
     this.renderer.toneMapping = ACESFilmicToneMapping;
@@ -71837,19 +71830,6 @@ class Game {
     this.audio = new AudioEngine();
     this.settings = this.ui.settings;
     this.quality = this.settings.quality;
-    // URL 开关：?safe=1 保守模式（低画质 + 锁 60 + 关阴影/后期）
-    //           ?cap=60 只锁帧率；?q=low|medium|high|ultra 强制画质；?diag=1 显示帧率诊断条
-    const _qs = new URLSearchParams(location.search);
-    this.frameCap = Math.max(0, Number(_qs.get('cap') || 0) || 0);
-    this.safeMode = _qs.get('safe') === '1';
-    this.diagOn = _qs.get('diag') === '1';
-    this.bareMode = _qs.get('bare') === '1';
-    const _forcedQ = _qs.get('q');
-    if (['low', 'medium', 'high', 'ultra'].includes(_forcedQ)) this.settings.quality = _forcedQ;
-    if (this.safeMode) {
-      this.settings.quality = 'low';
-      if (!this.frameCap) this.frameCap = 60;
-    }
     this.mode = 'boot';
     this.paused = false;
     this.overlayOpen = false;
@@ -72006,7 +71986,6 @@ class Game {
     this.revealMenuScene();
     this.clock.start();
     this.renderer.setAnimationLoop(this.tick);
-    this.resize(); // 启动时就把 backing store 对齐成整数像素，避免非整数缩放重采样
   }
 
   setupRendererTextures() {
@@ -72541,7 +72520,7 @@ class Game {
     this.exposureScale = settings.quality === 'ultra' ? 0.80 : settings.quality === 'high' ? 0.90 : 1;
     if (this.renderer) {
       if (this._exposureBase != null) this.setToneExposure(this._exposureBase);
-      const cap = this.safeMode ? 0.75 : settings.quality === 'ultra' ? 2.0 : settings.quality === 'high' ? 1.3 : settings.quality === 'medium' ? 1.0 : 0.75;
+      const cap = settings.quality === 'ultra' ? 2.0 : settings.quality === 'high' ? 1.3 : settings.quality === 'medium' ? 1.0 : 0.75;
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, cap));
       if (this.postFX) this.postFX.setQuality(settings.quality);
       this.blackHole?.setDiskGain?.(settings.quality === 'ultra' ? 0.76 : settings.quality === 'high' ? 0.92 : 1.18);
@@ -72549,7 +72528,7 @@ class Game {
       this.speedLines?.setQuality?.(settings.quality);
       const sfCount = settings.quality === 'low' ? 1500 : settings.quality === 'ultra' ? 4200 : 2700;
       if (this.starfield?.geometry) this.starfield.geometry.setDrawRange(0, sfCount);
-      this.renderer.shadowMap.enabled = !this.safeMode && settings.quality !== 'low';
+      this.renderer.shadowMap.enabled = settings.quality !== 'low';
       if (this.sunLight) {
         const shadowSize = settings.quality === 'ultra' ? 2048 : settings.quality === 'high' ? 1536 : 1024;
         this.sunLight.shadow.mapSize.set(shadowSize, shadowSize);
@@ -72568,23 +72547,11 @@ class Game {
   }
 
   resize() {
-    // 让「绘图缓冲像素数」成为整数，并且 canvas 的 CSS 尺寸与它严格成 dpr 倍。
-    // 150% 缩放下 window.innerWidth 常是奇数（1707），1707 * 1.5 = 2560.5，
-    // 浏览器会把 backing store 截成 2560，而 CSS 仍是 1707px -> 缩放 1.4997 非整数，
-    // 合成器每帧都要重采样这张 canvas，在 165Hz 上就表现为整块/半块黑帧的闪屏。
-    const dpr = this.renderer.getPixelRatio() || 1;
-    let w = Math.max(2, window.innerWidth);
-    let h = Math.max(2, window.innerHeight);
-    let guard = 0;
-    while ((w * dpr) % 1 !== 0 && guard++ < 256) w -= 1;
-    while ((h * dpr) % 1 !== 0 && guard++ < 512) h -= 1;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
-    if (this.canvas) {
-      this.canvas.style.width = w + 'px';
-      this.canvas.style.height = h + 'px';
-    }
     this.postFX?.setSize(w, h);
     this.tunnel?.resize?.(w, h);
     this.building?.resize?.();
@@ -73080,14 +73047,6 @@ class Game {
   // ---------------- update loop ----------------
   tick() {
     const raw = this.clock.getDelta();
-    if (this.frameCap > 0) {
-      this._capAcc = (this._capAcc || 0) + raw;
-      const step = 1 / this.frameCap;
-      if (this._capAcc < step) return;
-      this._capAcc = this._capAcc % step;
-    }
-    if (this.diagOn) this._diagTick(raw);
-    if (this.bareMode && !this._bareApplied) this._applyBareMode();
     // Do not let the whole simulation turn into slow motion on a slow GPU.
     // Input, camera and physics all advance on real elapsed time up to 100 ms.
     const dt = Math.min(raw, 0.1);
@@ -73129,14 +73088,9 @@ class Game {
     else if (this.mode === 'dead') ;
     this.updateEnvironment(dt);
     this.updateSpaceBooms(dt);
-    // DOM 层限流到 ~30Hz：每帧写 transform/textContent 会让合成器每帧提交，
-    // 在高刷屏上与 WebGL 换帧竞争，是闪屏的另一半原因。
-    if (!this.bareMode && this.time - (this._uiTick || 0) >= 0.033) {
-      this._uiTick = this.time;
-      this.updateHUD(dt);
-      this.updateMarkers();
-      this.ui.updateMarkers(this.markerData);
-    }
+    this.updateHUD(dt);
+    this.updateMarkers();
+    this.ui.updateMarkers(this.markerData);
     this.updateLockPrompt();
     this.render(dt);
     this.input.endFrame();
@@ -76461,46 +76415,6 @@ class Game {
     this.ui.setCinematic(false);
     this.ui.hideLocationCard();
     this.revealMenuScene();
-  }
-
-  _applyBareMode() {
-    if (!this.bareMode || this._bareApplied) return;
-    this._bareApplied = true;
-    const ids = ['#menu', '#hud', '#space-hud', '#world-markers', '#boot', '#cinematic-title',
-      '#gravity-warning', '#interact', '#context-prompt', '#build-bar', '#weapon-panel',
-      '#starmap', '#pause', '#settings', '#death', '#blackhole-death', '#flight-target',
-      '#vitals', '.vitals-panel', '#markers', '#toast'];
-    for (const sel of ids) {
-      document.querySelectorAll(sel).forEach((el) => { el.style.display = 'none'; });
-    }
-    document.documentElement.style.background = '#000';
-  }
-
-  _diagTick(raw) {
-    if (!this._diagEl) {
-      const el = document.createElement('div');
-      el.id = 'diag-bar';
-      el.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:9999;font:11px/1.5 ui-monospace,Consolas,monospace;color:#cfe;background:rgba(0,0,0,.55);padding:6px 9px;border-radius:4px;pointer-events:none;white-space:pre';
-      document.body.appendChild(el);
-      this._diagEl = el;
-      this._diagFrames = 0;
-      this._diagTime = 0;
-      this._diagMax = 0;
-      this._diagDrop = 0;
-    }
-    this._diagFrames++;
-    this._diagTime += raw;
-    if (raw > 1 / 40) this._diagDrop++;
-    if (raw > this._diagMax) this._diagMax = raw;
-    if (this._diagTime >= 0.5) {
-      const fps = this._diagFrames / this._diagTime;
-      const ms = (this._diagTime / this._diagFrames) * 1000;
-      this._diagEl.textContent =
-        'fps ' + fps.toFixed(0) + '  avg ' + ms.toFixed(1) + 'ms  max ' + (this._diagMax * 1000).toFixed(0) + 'ms\n' +
-        'slow(>25ms) ' + this._diagDrop + '  q=' + this.quality + '  dpr=' + this.renderer.getPixelRatio().toFixed(2) + '  cap=' + (this.frameCap || 'off') + '\n' +
-        'mode ' + this.mode + (this.safeMode ? '  SAFE' : '');
-      this._diagFrames = 0; this._diagTime = 0; this._diagMax = 0; this._diagDrop = 0;
-    }
   }
 }
 
